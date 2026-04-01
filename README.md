@@ -1,4 +1,4 @@
-# AI Challenger
+# AI Challengers
 
 A multi-model deliberation system that sends your questions to multiple AI providers with different thinking perspectives, runs anonymous peer review, and synthesizes a structured verdict.
 
@@ -13,7 +13,7 @@ Question ──→ [Model A] ──→ [Peer Review] ──→ [Chairman] ──
 
 ## Overview
 
-AI Challenger provides two Claude Code skills:
+AI Challengers provides two Claude Code skills:
 
 - **`/deliberate`** — Multi-perspective deliberation on a question or decision (9 modes)
 - **`/analyze`** — Deep multi-pass document/URL analysis with optional Q&A
