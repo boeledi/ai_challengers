@@ -1,0 +1,27 @@
+# API keys
+.env
+*.env
+!config/.env.example
+
+# Output (generated reports, transcripts, logs)
+output/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Inputs
+inputs/
+plan.md
+CLAUDE.md
+.env
