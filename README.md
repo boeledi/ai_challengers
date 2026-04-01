@@ -15,7 +15,7 @@ Question ──→ [Model A] ──→ [Peer Review] ──→ [Chairman] ──
 
 AI Provocateurs provides two Claude Code skills:
 
-- **`/deliberate`** — Multi-perspective deliberation on a question or decision (8 modes)
+- **`/deliberate`** — Multi-perspective deliberation on a question or decision (9 modes)
 - **`/analyze`** — Deep multi-pass document/URL analysis with optional Q&A
 
 The system works by dispatching your question to multiple LLM providers (Claude, GPT, Gemini, Grok, Mistral, DeepSeek, and more), each assigned a different thinking persona. Responses are anonymized, peer-reviewed, and synthesized by a chairman model into a structured verdict with clear recommendations.
@@ -93,7 +93,7 @@ d:\Development\ai_challengers\
 |-----------|---------|
 | `scripts/llm_call.py` | Core engine: unified multi-provider LLM caller with parallelism, retry, rate limiting |
 | `config/models.yaml` | Model catalog: definitions, token budgets, timeouts, rate limits, cost control |
-| `.claude/skills/deliberate/SKILL.md` | Primary skill: multi-perspective deliberation (8 modes) |
+| `.claude/skills/deliberate/SKILL.md` | Primary skill: multi-perspective deliberation (9 modes) |
 | `.claude/skills/analyze/SKILL.md` | Analysis skill: multi-pass document reading |
 
 ### Provider Adapters
@@ -310,6 +310,7 @@ Send a question or decision to a board of AI advisors with different thinking pe
 | `steelman` | Each defends an option | Yes | Comparing options |
 | `advocate` | Pro vs Contra teams | No | Binary decisions |
 | `forecast` | Predictions + confidence | Yes | Planning/estimation |
+| `collaborative` | Builder, Refiner, Validator, Integrator, Challenger | Yes (constructive) | Actionable plans and strategies |
 
 #### Council Mode Personas
 
@@ -323,7 +324,19 @@ Send a question or decision to a board of AI advisors with different thinking pe
 
 **Natural tensions:** Skeptic vs Catalyst (downside vs upside). Architect vs Operator (rethink vs just do it). Newcomer keeps everyone honest.
 
-#### Compass Mode Personas (from SPAR)
+#### Collaborative Mode Personas
+
+| Persona | Thinking Style |
+|---------|---------------|
+| **The Builder** | Proposes a concrete, actionable solution. Makes bold choices so others can refine. |
+| **The Refiner** | Takes good ideas and makes them better. Fills gaps, simplifies, improves sequencing. |
+| **The Validator** | Stress-tests proposals against reality. Confirms what's solid, mitigates what's risky. |
+| **The Integrator** | Connects ideas across advisors. Finds combinations greater than the sum of parts. |
+| **The Challenger** | Pushes the board to go further. Ensures the answer is ambitious enough and truly addresses the need. |
+
+**Natural dynamic:** Builder proposes, Refiner improves, Validator confirms, Integrator combines, Challenger stretches.
+
+#### Compass Mode Personas
 
 | Direction | Persona | Core Question |
 |-----------|---------|---------------|
@@ -388,6 +401,9 @@ Send a question or decision to a board of AI advisors with different thinking pe
 
 # Steelman: defend each option maximally
 /deliberate --mode steelman "React vs Vue vs Svelte for our new dashboard"
+
+# Collaborative mode: co-construct an actionable plan
+/deliberate --mode collaborative "Design our Q3 product launch strategy"
 
 # Quick sanity check (minimal cost, fast)
 /deliberate --depth quick "Is our caching strategy sound?"
