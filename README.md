@@ -1,4 +1,4 @@
-# AI Provocateurs
+# AI Challenger
 
 A multi-model deliberation system that sends your questions to multiple AI providers with different thinking perspectives, runs anonymous peer review, and synthesizes a structured verdict.
 
@@ -13,7 +13,7 @@ Question ──→ [Model A] ──→ [Peer Review] ──→ [Chairman] ──
 
 ## Overview
 
-AI Provocateurs provides two Claude Code skills:
+AI Challenger provides two Claude Code skills:
 
 - **`/deliberate`** — Multi-perspective deliberation on a question or decision (9 modes)
 - **`/analyze`** — Deep multi-pass document/URL analysis with optional Q&A
@@ -66,7 +66,7 @@ Step 7: REPORT     ──→ Generate HTML + MD output
 ## Architecture
 
 ```
-d:\Development\ai_challengers\
+\ai_challengers\
 ├── .claude/
 │   └── skills/
 │       ├── deliberate/
@@ -580,7 +580,7 @@ Jitter prevents thundering herd when parallel calls retry simultaneously.
 
 ## Security: Prompt Injection Defense
 
-AI Provocateurs sends user-provided content to multiple LLMs in a multi-stage pipeline. This creates prompt injection risk at three levels:
+AI Challengers sends user-provided content to multiple LLMs in a multi-stage pipeline. This creates prompt injection risk at three levels:
 
 ### Threat Model
 
@@ -635,10 +635,10 @@ For high-security use cases, review LLM outputs before acting on them.
 
 ## OpenClaw Integration (Optional)
 
-[OpenClaw](https://openclaw.ai/) is an open-source AI agent that connects to 30+ messaging platforms. AI Provocateurs can be used as an OpenClaw skill, allowing deliberation from WhatsApp, Telegram, Slack, etc.
+[OpenClaw](https://openclaw.ai/) is an open-source AI agent that connects to 30+ messaging platforms. AI Challengers can be used as an OpenClaw skill, allowing deliberation from WhatsApp, Telegram, Slack, etc.
 
 ```
-WhatsApp ──→ OpenClaw ──→ AI Provocateurs ──→ Report
+WhatsApp ──→ OpenClaw ──→ AI Challengers ──→ Report
 Telegram ──↗              (orchestrate.py)    ↓
 Slack    ──↗                              Verdict in chat
 ```
@@ -671,7 +671,7 @@ Slack    ──↗                              Verdict in chat
 
 ## Credits & Inspirations
 
-AI Provocateurs is built on insights from four deliberation methodologies:
+AI Challengers is built on insights from four deliberation methodologies:
 
 - **[LLM Council](https://github.com/andyjakubowski/llm-council)** — Andrej Karpathy's approach to running decisions through 5 advisor personas with peer review. Inspired the council mode personas and anonymized review process.
 
