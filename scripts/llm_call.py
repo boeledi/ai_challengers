@@ -260,20 +260,12 @@ def call_anthropic(
         body["system"] = system_prompt
 
     # Extended thinking support
+    # NOTE: Thinking API requires a version header that may not be available yet.
+    # When the API version becomes available, uncomment the block below.
+    # For now, use temperature variation for diversity (handled by caller).
     if thinking_level:
-        thinking_budget_map = {
-            "low": 2048,
-            "medium": 8192,
-            "high": 16384,
-        }
-        budget = thinking_budget_map.get(thinking_level, 8192)
-        body["thinking"] = {
-            "type": "enabled",
-            "budget_tokens": budget,
-        }
-        # When thinking is enabled, max_tokens must include thinking budget
-        body["max_tokens"] = max_tokens + budget
-        headers["anthropic-version"] = "2025-04-14"
+        temp_map = {"low": 0.3, "medium": 0.7, "high": 1.0}
+        body["temperature"] = temp_map.get(thinking_level, 0.7)
 
     resp = requests.post(
         model_cfg["endpoint"],
@@ -356,11 +348,16 @@ def call_openai_compat(
     body = {
         "model": model_cfg["model_id"],
         "messages": messages,
-        "max_tokens": max_tokens,
     }
 
-    # Handle thinking levels for OpenAI o-series models
+    # GPT-5.x and o-series models use max_completion_tokens; others use max_tokens
     model_id = model_cfg.get("model_id", "")
+    if model_id.startswith("gpt-5") or model_id.startswith("o"):
+        body["max_completion_tokens"] = max_tokens
+    else:
+        body["max_tokens"] = max_tokens
+
+    # Handle thinking levels for OpenAI o-series models
     if thinking_level and model_id.startswith("o"):
         # o-series models support reasoning_effort
         body["reasoning_effort"] = thinking_level

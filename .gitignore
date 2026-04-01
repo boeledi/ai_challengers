@@ -25,3 +25,4 @@ inputs/
 plan.md
 CLAUDE.md
 .env
+.tmp/**
