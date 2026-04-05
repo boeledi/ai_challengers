@@ -58,6 +58,8 @@ Follow these 10 steps exactly. Do not skip steps unless explicitly noted.
 | `--models` | | a,b,c | Use only these specific models |
 | `--files` | `-f` | paths | Include files as shared context |
 | `--prompt-file` | `-pf` | path | Read the question from a file |
+| `--length` | `-l` | level | Response length: concise / standard / detailed / comprehensive |
+| `--no-interact` | | — | Disable mid-pipeline user interaction |
 | `--save` | `-s` | path | Save transcript to specific path |
 | `--no-context` | | — | Skip workspace context auto-detection |
 
@@ -101,6 +103,25 @@ the input says.
 When `--depth` is set, it overrides `--rounds` if `--rounds` is not explicitly provided.
 If both are set, `--rounds` takes precedence.
 
+### Length Levels
+
+| Length | Multiplier | Example (basic depth 150-300) |
+|--------|-----------|-------------------------------|
+| `concise` | 0.5x | 75-150 words |
+| `standard` (default) | 1.0x | 150-300 words |
+| `detailed` | 1.5x | 225-450 words |
+| `comprehensive` | 2.5x | 375-750 words |
+
+Length scales both the word count target in prompts AND the token budget sent to the API.
+The effective word range = depth's base range × length multiplier.
+
+When `--length` is set, compute the word range as follows:
+1. Look up the depth's `base_word_range` (e.g., basic = [150, 300])
+2. Look up the length's `word_range_multiplier` (e.g., detailed = 1.5)
+3. Effective range = `[base_lo * multiplier, base_hi * multiplier]` → "225-450"
+4. Use this range in all persona prompt templates where word counts appear.
+5. Pass the `--length` flag to `llm_call.py` calls to scale token budgets.
+
 ### Rounds Semantics
 
 - `--rounds 1` (default): Initial dispatch only. Each advisor responds independently.
@@ -125,8 +146,12 @@ If both are set, `--rounds` takes precedence.
    - Vague: `"my pricing"` → "What specific pricing decision? e.g., '$97 vs $297', 'freemium vs paid'"
    - Missing source: `"analyze this"` → "I need a URL or file path. Which document?"
    - Binary detected: `"monolith vs microservices"` → "This looks like a binary decision. Should I use advocate mode (pro vs contra)? [Y/n]"
-5. **Determine depth parameters** — apply depth level defaults if `--depth` is set.
-6. **State assumptions** if any: "Using council mode with 5 advisors: claude-opus, gpt, gemini, grok, claude-sonnet."
+5. **Determine depth and length parameters:**
+   - Apply depth level defaults if `--depth` is set (rounds, max_advisors, base_word_range, peer_review).
+   - Apply length multiplier if `--length` is set (word_range_multiplier, token_budget_multiplier).
+   - Compute effective word range: `base_word_range × word_range_multiplier`. E.g., depth=deep (200-400) + length=detailed (1.5x) → "300-600 words".
+   - Default: depth=basic, length=standard → "150-300 words".
+6. **State assumptions** if any: "Using council mode with 5 advisors, depth=basic, length=standard (150-300 words): claude-opus, gpt, gemini, grok, claude-sonnet."
 
 **Rules:**
 - Maximum 1 clarifying question. Never an interrogation.
@@ -180,20 +205,11 @@ Reframe the user's raw question as a neutral prompt including:
 
 ### Step 4: PARALLEL DISPATCH
 
-For each advisor, construct the system prompt using the persona template for the current mode (see PERSONA TEMPLATES below). Then call all advisors in parallel:
+For each advisor, construct the system prompt using the persona template for the current mode (see PERSONA TEMPLATES below). Then call all advisors in parallel.
 
-```bash
-python scripts/llm_call.py --parallel \
-  --model MODEL1 --model MODEL2 --model MODEL3 ... \
-  --role advisor \
-  --prompt-file /tmp/deliberate-prompt.txt \
-  --system-file /tmp/deliberate-system-ADVISOR_INDEX.txt \
-  --quiet
-```
+**IMPORTANT — Word range substitution:** The persona templates below show default word count targets (e.g., "150-300 words"). When constructing actual prompts, **replace** these with the effective word range computed in Step 0 from depth × length. For example, if depth=deep and length=detailed, replace "150-300 words" with "300-600 words" in every persona prompt.
 
-**Important:** Since each advisor needs a DIFFERENT system prompt (different persona), you must make individual calls or write per-advisor system prompts to temp files. The simplest approach is to make N individual calls using `--model` for each, or write the full framed question to a prompt file and each persona system prompt to separate system files.
-
-**Alternative approach (recommended for simplicity):** Make individual sequential or parallel calls, one per advisor:
+**IMPORTANT — Length flag:** When `--length` is set, add `--length {value}` to every `llm_call.py` invocation. This scales the token budget sent to the API, complementing the word range target in the prompt.
 
 ```bash
 # For each advisor:
@@ -202,12 +218,43 @@ python scripts/llm_call.py \
   --role advisor \
   --prompt "THE_FRAMED_QUESTION" \
   --system "THE_PERSONA_SYSTEM_PROMPT" \
+  --length EFFECTIVE_LENGTH \
   --quiet
 ```
 
 Run all advisor calls concurrently by launching them as background processes or by calling `llm_call.py` once per advisor. Parse each JSON result.
 
 Store all advisor responses for subsequent steps.
+
+### Step 4.5: INTERACTIVE CLARIFICATION (if applicable)
+
+**Skip this step if `--no-interact` is set.**
+
+After receiving all advisor responses, scan them for `<needs_info>` tags. These tags indicate that an advisor needs additional information from the user to provide a stronger analysis.
+
+1. **Scan** all advisor responses for `<needs_info>...</needs_info>` tags using regex.
+2. **If questions found:**
+   a. Aggregate and deduplicate the questions (max 5).
+   b. Present them to the user via AskUserQuestion:
+      "The deliberation advisors would like additional information:
+      1. [question 1]
+      2. [question 2]
+      Please provide any relevant information, or say 'skip' to continue."
+   c. If the user provides an answer:
+      - Store it as additional context.
+      - Strip `<needs_info>` tags from all advisor responses.
+      - If `rounds == 1`, auto-upgrade to `rounds = 2` so advisors can incorporate the new info.
+   d. If the user skips: strip `<needs_info>` tags and continue normally.
+3. **If no questions found:** continue to Step 5.
+
+When round 2+ runs with user context, include this section in the deliberation round prompt:
+
+```
+ADDITIONAL CONTEXT PROVIDED BY THE USER:
+<user_input>
+{user_answers}
+</user_input>
+```
 
 ### Step 5: DELIBERATION ROUNDS (if rounds > 1)
 
@@ -306,6 +353,16 @@ start output/deliberate-report-TIMESTAMP.html
 wrapped in `<user_input>` tags, and model outputs from previous stages are wrapped in
 `<model_output>` tags. Every template starts with the anti-injection preamble. When constructing
 actual prompts, always preserve these boundary tags and the preamble.
+
+**IMPORTANT — Interactive Clarification:** Unless `--no-interact` is set, append the following
+paragraph at the end of EVERY advisor system prompt (after the word count line):
+
+```
+If you genuinely cannot provide useful analysis without specific information that is not in the
+question, you may include ONE question using: <needs_info>your question here</needs_info>.
+Most questions will NOT require this — only use it when the missing information would significantly
+change your recommendation.
+```
 
 ### Council Mode Personas
 

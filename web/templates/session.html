@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Session {{ session.id }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>{{ session.pipeline_type | title }} Session</h1>
+    <p class="meta">
+        ID: {{ session.id }} |
+        Created: {{ session.created_at }} |
+        Status: <span class="chip chip-{{ session.status }}">{{ session.status }}</span>
+    </p>
+    <p class="meta">
+        Mode: {{ session.mode }} | Depth: {{ session.depth }} | Length: {{ session.length }}
+        {% if session.duration_ms %} | Duration: {{ (session.duration_ms / 1000) | round(1) }}s{% endif %}
+    </p>
+    <p class="question-text">{{ session.question }}</p>
+</div>
+
+{% if session.result_html %}
+<div class="card">
+    <h2>Report</h2>
+    <iframe id="report-frame" class="report-iframe" srcdoc="{{ session.result_html | e }}" sandbox="allow-same-origin"></iframe>
+</div>
+{% endif %}
+
+{% if events %}
+<div class="card">
+    <details>
+        <summary>Event Log ({{ events | length }} events)</summary>
+        <div class="event-list">
+            {% for e in events %}
+            <div class="event-item">
+                <span class="meta">{{ e.timestamp }}</span>
+                <strong>{{ e.event_type }}</strong>
+                {% if e.data %}
+                <pre>{{ e.data }}</pre>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+</div>
+{% endif %}
+{% endblock %}

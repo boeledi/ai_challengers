@@ -20,6 +20,10 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Database (web sessions)
+data/
+*.db
+
 # Inputs
 inputs/
 plan.md

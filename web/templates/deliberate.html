@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Deliberation — {{ session.question[:50] }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>{{ session.mode | title }} Deliberation</h1>
+    <p class="meta">
+        Mode: {{ session.mode }} | Depth: {{ session.depth }} | Length: {{ session.length }}
+    </p>
+    <p class="question-text">{{ session.question }}</p>
+</div>
+
+{% if session.status != 'complete' %}
+<div class="card" id="progress-card">
+    <h2>Progress</h2>
+    <div id="events" hx-ext="sse" sse-connect="/deliberate/{{ session_id }}/events">
+        <div sse-swap="progress" hx-swap="beforeend" hx-target="#event-list"></div>
+        <div sse-swap="needs_input" hx-swap="innerHTML" hx-target="#interaction-area"></div>
+        <div sse-swap="error" hx-swap="beforeend" hx-target="#event-list"></div>
+        <div sse-swap="complete" hx-swap="innerHTML" hx-target="#complete-area"></div>
+    </div>
+
+    <div id="event-list" class="event-list">
+        {% if session.status == 'pending' %}
+        <div class="event-item">Waiting to start...</div>
+        {% elif session.status == 'running' %}
+        <div class="event-item">Pipeline running...</div>
+        {% elif session.status == 'error' %}
+        <div class="event-item error">Error: {{ session.progress_step }}</div>
+        {% endif %}
+    </div>
+
+    <div id="interaction-area"></div>
+    <div id="complete-area"></div>
+</div>
+{% endif %}
+
+{% if session.status == 'complete' %}
+<div class="card">
+    <h2>Report</h2>
+    {% if session.duration_ms %}
+    <p class="meta">Completed in {{ (session.duration_ms / 1000) | round(1) }}s</p>
+    {% endif %}
+    {% if session.result_html %}
+    <iframe id="report-frame" class="report-iframe" srcdoc="{{ session.result_html | e }}" sandbox="allow-same-origin"></iframe>
+    {% else %}
+    <p class="meta">Report generated as file. Check the output/ directory.</p>
+    {% endif %}
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('htmx:sseMessage', function(event) {
+    const eventList = document.getElementById('event-list');
+    const data = JSON.parse(event.detail.data);
+
+    if (event.detail.type === 'progress') {
+        const item = document.createElement('div');
+        item.className = 'event-item';
+        item.textContent = data.detail || data.step || 'Processing...';
+        eventList.appendChild(item);
+        eventList.scrollTop = eventList.scrollHeight;
+    } else if (event.detail.type === 'needs_input') {
+        const area = document.getElementById('interaction-area');
+        area.innerHTML = buildInteractionForm(data.questions, '{{ session_id }}');
+    } else if (event.detail.type === 'error') {
+        const item = document.createElement('div');
+        item.className = 'event-item error';
+        item.textContent = 'Error: ' + (data.message || 'Unknown error');
+        eventList.appendChild(item);
+    } else if (event.detail.type === 'complete') {
+        const area = document.getElementById('complete-area');
+        area.innerHTML = '<div class="event-item success">Deliberation complete. Reloading report...</div>';
+        // Reload to show the stored result_html
+        setTimeout(() => location.reload(), 1500);
+    }
+});
+
+function buildInteractionForm(questions, sessionId) {
+    let html = '<div class="interaction-box"><h3>Advisors Need More Information</h3><ul>';
+    if (questions) {
+        questions.forEach((q, i) => { html += '<li>' + q + '</li>'; });
+    }
+    html += '</ul>';
+    html += '<form hx-post="/deliberate/' + sessionId + '/answer" hx-target="#interaction-area" hx-swap="innerHTML">';
+    html += '<textarea name="answer" rows="3" placeholder="Your answer..."></textarea>';
+    html += '<button type="submit" class="btn btn-primary">Submit</button>';
+    html += '<button type="button" class="btn btn-secondary" onclick="this.closest(\'form\').querySelector(\'[name=answer]\').value=\'skip\';htmx.trigger(this.closest(\'form\'),\'submit\')">Skip</button>';
+    html += '</form></div>';
+    return html;
+}
+</script>
+{% endblock %}

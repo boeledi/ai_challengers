@@ -133,11 +133,23 @@ def get_token_budget(config: dict, role: str) -> int:
     return budgets.get(role, budgets.get("default", 4096))
 
 
-def get_effective_max_tokens(config: dict, model_key: str, role: str) -> int:
-    """Compute effective max_tokens = min(token_budget[role], model.max_tokens)."""
+def get_effective_max_tokens(config: dict, model_key: str, role: str,
+                             length: str | None = None) -> int:
+    """Compute effective max_tokens = min(token_budget[role] * multiplier, model.max_tokens).
+
+    When length is provided, applies the token_budget_multiplier from the
+    response_profiles.length config section. Falls back to 1.0 if the section
+    or the length name is missing.
+    """
     model_cfg = config["models"][model_key]
     model_ceiling = model_cfg.get("max_tokens", 16384)
     budget = get_token_budget(config, role)
+
+    if length:
+        profiles = config.get("response_profiles", {}).get("length", {})
+        multiplier = profiles.get(length, {}).get("token_budget_multiplier", 1.0)
+        budget = int(budget * multiplier)
+
     return min(budget, model_ceiling)
 
 
@@ -518,6 +530,7 @@ def call_model(
     system_prompt: str | None = None,
     thinking_level: str | None = None,
     rate_limiter: ProviderRateLimiter | None = None,
+    length: str | None = None,
 ) -> dict:
     """Make a single LLM call with retry logic and rate limiting.
 
@@ -533,6 +546,8 @@ def call_model(
         system_prompt: Optional system instructions.
         thinking_level: Optional thinking level override (low/medium/high).
         rate_limiter: Optional ProviderRateLimiter for parallel calls.
+        length: Optional response length profile (concise/standard/detailed/comprehensive).
+                Scales the token budget via response_profiles.length config.
 
     Returns:
         Dict with keys: model, role, response, tokens_used, duration_ms,
@@ -551,7 +566,7 @@ def call_model(
     if not thinking_level:
         thinking_level = model_cfg.get("default_thinking")
 
-    max_tokens = get_effective_max_tokens(config, model_key, role)
+    max_tokens = get_effective_max_tokens(config, model_key, role, length=length)
     timeouts = get_timeouts(config, role)
 
     start_time = time.time()
@@ -687,6 +702,7 @@ def call_models_parallel(
     system_prompts: list[str] | None = None,
     thinking_level: str | None = None,
     thinking_levels: list[str] | None = None,
+    length: str | None = None,
 ) -> list[dict]:
     """Call multiple models in parallel with rate limiting.
 
@@ -703,6 +719,7 @@ def call_models_parallel(
         system_prompts: Per-model system prompts (overrides system_prompt).
         thinking_level: Shared thinking level override.
         thinking_levels: Per-model thinking level overrides.
+        length: Optional response length profile (scales token budgets).
 
     Returns:
         List of result dicts in the same order as model_keys.
@@ -721,6 +738,7 @@ def call_models_parallel(
             system_prompt=sp,
             thinking_level=tl,
             rate_limiter=rate_limiter,
+            length=length,
         )
 
     # Use max 10 workers — most sessions have 5 or fewer models
@@ -846,6 +864,11 @@ Examples:
         help="Check which models are available (API keys set). No call made.",
     )
     parser.add_argument(
+        "--length",
+        choices=["concise", "standard", "detailed", "comprehensive"],
+        help="Response length profile. Scales token budgets via response_profiles config.",
+    )
+    parser.add_argument(
         "--quiet", "-q",
         action="store_true",
         help="Suppress log output to stderr.",
@@ -906,6 +929,7 @@ def main():
             prompt=prompt,
             system_prompt=system_prompt,
             thinking_level=args.thinking_level,
+            length=args.length,
         )
         print(json.dumps(result, indent=2))
         return
@@ -918,6 +942,7 @@ def main():
         prompt=prompt,
         system_prompt=system_prompt,
         thinking_level=args.thinking_level,
+        length=args.length,
     )
     print(json.dumps(results, indent=2))
 

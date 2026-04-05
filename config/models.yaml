@@ -239,3 +239,66 @@ cost_control:
     deepseek: { input: 0.27, output: 1.10 }
     deepseek-r1: { input: 0.55, output: 2.19 }
     default: { input: 2.0, output: 8.0 }
+
+# =============================================================================
+# Response profiles — Length & Depth control
+# =============================================================================
+# Length controls HOW MUCH each advisor writes (word count multiplier).
+# Depth controls HOW MANY rounds, advisors, and review intensity.
+# These are orthogonal: effective_word_range = depth.base_word_range * length.multiplier
+# Effective token budget = token_budgets[role] * length.token_budget_multiplier
+# =============================================================================
+
+response_profiles:
+  length:
+    concise:
+      word_range_multiplier: 0.5
+      token_budget_multiplier: 0.5
+    standard:
+      word_range_multiplier: 1.0
+      token_budget_multiplier: 1.0
+    detailed:
+      word_range_multiplier: 1.5
+      token_budget_multiplier: 1.5
+    comprehensive:
+      word_range_multiplier: 2.5
+      token_budget_multiplier: 2.5
+
+  depth:
+    quick:
+      rounds: 1
+      max_advisors: 4
+      peer_review: false
+      base_word_range: [100, 200]
+    basic:
+      rounds: 1
+      max_advisors: 5
+      peer_review: true
+      base_word_range: [150, 300]
+    stress:
+      rounds: 2
+      max_advisors: 5
+      peer_review: true
+      sentinel: true
+      base_word_range: [150, 300]
+    deep:
+      rounds: 3
+      max_advisors: 6
+      peer_review: true
+      base_word_range: [200, 400]
+    ultra:
+      rounds: 5
+      max_advisors: 8
+      peer_review: true
+      peer_review_rounds: 2
+      base_word_range: [300, 500]
+
+# =============================================================================
+# Web interface settings
+# =============================================================================
+
+web:
+  host: "127.0.0.1"
+  port: 8080
+  db_path: "data/sessions.db"
+  max_concurrent_pipelines: 3

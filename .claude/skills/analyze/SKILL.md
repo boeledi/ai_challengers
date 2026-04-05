@@ -36,6 +36,7 @@ Follow these 8 steps exactly. Do not skip steps unless explicitly noted.
 | `--extract` | | — | Extract structured data (dates, figures, entities) |
 | `--format` | | html/md/both | Output format (default: both) |
 | `--lang` | `-l` | language | Output language (default: same as input) |
+| `--length` | | level | Response length: concise / standard / detailed / comprehensive |
 | `--prompt-file` | `-pf` | path | Additional instructions from file |
 
 ---

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}AI Provocateurs — New Session{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Start a Deliberation</h1>
+    <form action="/deliberate" method="post" enctype="multipart/form-data" class="form-grid">
+        <div class="form-group full-width">
+            <label for="question">Your Question</label>
+            <textarea id="question" name="question" rows="4"
+                      placeholder="What decision are you facing? Be specific about the context and constraints..."
+                      required></textarea>
+        </div>
+
+        <div class="form-group full-width">
+            <label for="files">Context Files (optional)</label>
+            <input type="file" id="files" name="files" multiple
+                   accept=".txt,.md,.csv,.json,.yaml,.yml,.py,.js,.ts,.html,.xml,.log,.pdf">
+            <span class="hint">Upload files to include as additional context for the advisors.</span>
+        </div>
+
+        <div class="form-group">
+            <label for="mode">Mode</label>
+            <select id="mode" name="mode">
+                {% for m in modes %}
+                <option value="{{ m }}" {{ 'selected' if m == 'council' else '' }}>{{ m }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="depth">Depth</label>
+            <select id="depth" name="depth">
+                <option value="">basic (default)</option>
+                {% for d in depths %}
+                <option value="{{ d }}">{{ d }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="length">Response Length</label>
+            <select id="length" name="length">
+                <option value="">standard (default)</option>
+                {% for l in lengths %}
+                <option value="{{ l }}">{{ l }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="rounds">Rounds</label>
+            <input type="number" id="rounds" name="rounds" value="1" min="1" max="10">
+        </div>
+
+        <div class="form-group checkbox-group">
+            <label>
+                <input type="checkbox" name="no_interact">
+                Disable advisor questions
+            </label>
+        </div>
+
+        <div class="form-group full-width">
+            <button type="submit" class="btn btn-primary">Start Deliberation</button>
+        </div>
+    </form>
+</div>
+
+<div class="card">
+    <h2>Start an Analysis</h2>
+    <form action="/analyze" method="post" class="form-grid">
+        <div class="form-group full-width">
+            <label for="source">URL or File Path</label>
+            <input type="text" id="source" name="source"
+                   placeholder="https://example.com/article or path/to/document.md"
+                   required>
+        </div>
+
+        <div class="form-group">
+            <label for="analysis-length">Response Length</label>
+            <select id="analysis-length" name="length">
+                <option value="">standard (default)</option>
+                {% for l in lengths %}
+                <option value="{{ l }}">{{ l }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group checkbox-group">
+            <label><input type="checkbox" name="with_qa"> Generate Q&A</label>
+        </div>
+
+        <div class="form-group checkbox-group">
+            <label><input type="checkbox" name="extract"> Extract structured data</label>
+        </div>
+
+        <div class="form-group full-width">
+            <button type="submit" class="btn btn-secondary">Start Analysis</button>
+        </div>
+    </form>
+</div>
+
+{% if available_models %}
+<div class="card card-small">
+    <h3>Available Models</h3>
+    <div class="model-chips">
+        {% for model in available_models %}
+        <span class="chip chip-ready">{{ model }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endblock %}

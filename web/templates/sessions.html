@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Session History{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Session History</h1>
+
+    {% if sessions %}
+    <table class="sessions-table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>Question</th>
+                <th>Mode</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in sessions %}
+            <tr>
+                <td class="meta">{{ s.created_at }}</td>
+                <td>{{ s.pipeline_type }}</td>
+                <td class="question-cell">{{ s.question[:80] }}{% if s.question|length > 80 %}...{% endif %}</td>
+                <td>{{ s.mode }}</td>
+                <td>
+                    <span class="chip chip-{{ s.status }}">{{ s.status }}</span>
+                </td>
+                <td>
+                    {% if s.pipeline_type == 'deliberate' %}
+                    <a href="/deliberate/{{ s.id }}" class="btn btn-small">View</a>
+                    {% else %}
+                    <a href="/analyze/{{ s.id }}" class="btn btn-small">View</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No sessions yet. <a href="/">Start one</a>.</p>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,22 @@
+<!-- HTMX partial: mid-pipeline interaction form -->
+<div class="interaction-box">
+    <h3>Advisors Need More Information</h3>
+    <ul>
+        {% for q in questions %}
+        <li>{{ q }}</li>
+        {% endfor %}
+    </ul>
+    <form hx-post="/deliberate/{{ session_id }}/answer"
+          hx-target="#interaction-area"
+          hx-swap="innerHTML">
+        <textarea name="answer" rows="3"
+                  placeholder="Provide any relevant information..."></textarea>
+        <div class="btn-group">
+            <button type="submit" class="btn btn-primary">Submit Answer</button>
+            <button type="button" class="btn btn-secondary"
+                    onclick="this.closest('form').querySelector('[name=answer]').value='skip';htmx.trigger(this.closest('form'),'submit')">
+                Skip
+            </button>
+        </div>
+    </form>
+</div>

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Configuration{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Configuration</h1>
+    <p class="meta">API keys are write-only. Values are never displayed.</p>
+</div>
+
+<div class="card">
+    <h2>Model Status</h2>
+    <table class="sessions-table">
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>Provider</th>
+                <th>Status</th>
+                <th>Env Variable</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for model, info in models_status.items() %}
+            <tr>
+                <td>{{ model }}</td>
+                <td>{{ info.provider }}</td>
+                <td>
+                    {% if info.status == 'ready' %}
+                    <span class="chip chip-complete">Ready</span>
+                    {% else %}
+                    <span class="chip chip-error">No Key</span>
+                    {% endif %}
+                </td>
+                <td class="meta">{{ info.get('env_var', '-') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Update API Key</h2>
+    <form action="/config/keys" method="post" class="form-grid">
+        <div class="form-group">
+            <label for="key_name">Environment Variable</label>
+            <select id="key_name" name="key_name">
+                {% for model, info in models_status.items() %}
+                {% if info.get('env_var') %}
+                <option value="{{ info.env_var }}">{{ info.env_var }}</option>
+                {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="key_value">API Key Value</label>
+            <input type="password" id="key_value" name="key_value"
+                   placeholder="sk-..." required>
+        </div>
+        <div class="form-group">
+            <button type="submit" class="btn btn-primary">Update Key</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

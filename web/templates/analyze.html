@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Analysis — {{ session.question[:50] }}{% endblock %}
+
+{% block content %}
+<div class="card">
+    <h1>Document Analysis</h1>
+    <p class="meta">Source: {{ session.question }}</p>
+</div>
+
+<div class="card" id="progress-card">
+    <h2>Progress</h2>
+    <div id="events" hx-ext="sse" sse-connect="/analyze/{{ session_id }}/events">
+        <div sse-swap="progress" hx-swap="beforeend" hx-target="#event-list"></div>
+        <div sse-swap="error" hx-swap="beforeend" hx-target="#event-list"></div>
+        <div sse-swap="complete" hx-swap="innerHTML" hx-target="#complete-area"></div>
+    </div>
+
+    <div id="event-list" class="event-list">
+        {% if session.status == 'pending' %}
+        <div class="event-item">Waiting to start...</div>
+        {% elif session.status == 'complete' %}
+        <div class="event-item success">Analysis complete.</div>
+        {% endif %}
+    </div>
+
+    <div id="complete-area"></div>
+</div>
+
+{% if session.status == 'complete' and session.result_html %}
+<div class="card">
+    <h2>Report</h2>
+    <div class="report-content">
+        {{ session.result_html | safe }}
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('htmx:sseMessage', function(event) {
+    const eventList = document.getElementById('event-list');
+    const data = JSON.parse(event.detail.data);
+
+    if (event.detail.type === 'progress') {
+        const item = document.createElement('div');
+        item.className = 'event-item';
+        item.textContent = data.detail || data.step || 'Processing...';
+        eventList.appendChild(item);
+    } else if (event.detail.type === 'error') {
+        const item = document.createElement('div');
+        item.className = 'event-item error';
+        item.textContent = 'Error: ' + (data.message || 'Unknown error');
+        eventList.appendChild(item);
+    } else if (event.detail.type === 'complete') {
+        document.getElementById('complete-area').innerHTML =
+            '<div class="event-item success">Analysis complete. Reloading...</div>';
+        setTimeout(() => location.reload(), 2000);
+    }
+});
+</script>
+{% endblock %}
