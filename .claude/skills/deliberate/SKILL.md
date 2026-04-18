@@ -226,26 +226,43 @@ Run all advisor calls concurrently by launching them as background processes or 
 
 Store all advisor responses for subsequent steps.
 
-### Step 4.5: INTERACTIVE CLARIFICATION (if applicable)
+---
 
-**Skip this step if `--no-interact` is set.**
+### ⚠️ MANDATORY Step 4.5: INTERACTIVE CLARIFICATION
 
-After receiving all advisor responses, scan them for `<needs_info>` tags. These tags indicate that an advisor needs additional information from the user to provide a stronger analysis.
+**DO NOT SKIP THIS STEP.** You MUST execute it after every Step 4, unless `--no-interact` is set.
 
-1. **Scan** all advisor responses for `<needs_info>...</needs_info>` tags using regex.
-2. **If questions found:**
-   a. Aggregate and deduplicate the questions (max 5).
-   b. Present them to the user via AskUserQuestion:
-      "The deliberation advisors would like additional information:
-      1. [question 1]
-      2. [question 2]
-      Please provide any relevant information, or say 'skip' to continue."
-   c. If the user provides an answer:
-      - Store it as additional context.
-      - Strip `<needs_info>` tags from all advisor responses.
+After receiving all advisor responses, scan each one for `<needs_info>...</needs_info>` tags.
+These tags indicate that an advisor identified missing information that would improve the quality
+of the board's advice.
+
+**Procedure:**
+
+1. **Scan** every advisor response for text matching the pattern `<needs_info>...</needs_info>`.
+   Look for the literal tags — they may appear anywhere in the response text.
+
+2. **If one or more `<needs_info>` tags are found:**
+   a. Extract the question text from each tag.
+   b. Deduplicate similar questions (keep the most specific version). Max 5 questions.
+   c. Present them to the user via **AskUserQuestion** using this exact format:
+
+      ```
+      The deliberation advisors would like additional information to sharpen their analysis:
+
+      1. [extracted question 1]
+      2. [extracted question 2]
+
+      Please provide any relevant information. You can also say "skip" to continue without answering.
+      ```
+
+   d. **If the user answers:**
+      - Store the answer as `user_additional_context`.
+      - Remove all `<needs_info>...</needs_info>` tags from advisor responses.
       - If `rounds == 1`, auto-upgrade to `rounds = 2` so advisors can incorporate the new info.
-   d. If the user skips: strip `<needs_info>` tags and continue normally.
-3. **If no questions found:** continue to Step 5.
+   e. **If the user says "skip":** remove all tags and continue normally.
+
+3. **If NO `<needs_info>` tags found:** proceed to Step 5. (This is fine — it means advisors
+   had enough context to give concrete advice.)
 
 When round 2+ runs with user context, include this section in the deliberation round prompt:
 
@@ -354,15 +371,23 @@ wrapped in `<user_input>` tags, and model outputs from previous stages are wrapp
 `<model_output>` tags. Every template starts with the anti-injection preamble. When constructing
 actual prompts, always preserve these boundary tags and the preamble.
 
-**IMPORTANT — Interactive Clarification:** Unless `--no-interact` is set, append the following
-paragraph at the end of EVERY advisor system prompt (after the word count line):
+**CRITICAL — Interactive Clarification (MANDATORY unless `--no-interact` is set):**
+
+You MUST append the following paragraph at the end of EVERY advisor system prompt, right after
+the word count and opener line. Do NOT skip this — it enables advisors to request information
+they need to give concrete advice instead of guessing:
 
 ```
-If you genuinely cannot provide useful analysis without specific information that is not in the
-question, you may include ONE question using: <needs_info>your question here</needs_info>.
-Most questions will NOT require this — only use it when the missing information would significantly
-change your recommendation.
+IMPORTANT — Before responding, check: does the question provide enough specifics for you to give
+concrete, actionable advice? If key details are missing — such as budget, timeline, team size,
+risk tolerance, target market, success criteria, or domain constraints — include a clarifying
+question using: <needs_info>your question here</needs_info>. You may include ONE question. A
+well-targeted question now is more valuable than generic advice built on assumptions you had
+to invent.
 ```
+
+**Verification:** After constructing each advisor prompt, confirm the `<needs_info>` paragraph
+is present at the end. If it is missing, add it before dispatching.
 
 ### Council Mode Personas
 
@@ -546,7 +571,7 @@ RULES:
 - Name the strategic option space: what future doors does this open or close?
 - If there's a tension between short-term gains and long-term positioning, make it explicit.
 - Be ambitious but grounded in logic — explain the causal chain from today to the future state.
-- Do NOT address execution details (South handles that) or disruption risks (East handles that).
+- Focus on strategic trajectory. If execution constraints or disruptions directly affect your strategic read, briefly note the connection.
 - Do NOT restate the question. Start directly with your strategic read.
 
 150-300 words.
@@ -575,7 +600,7 @@ RULES:
 - For each disruption you identify, explain the mechanism — how specifically does it change the calculus?
 - Propose at least one unconventional alternative that the question's framing excludes.
 - Ground your provocations in real, observable trends — not science fiction.
-- Do NOT address long-term vision (North handles that) or historical precedent (West handles that).
+- Focus on emergence and disruption. If your insight connects to long-term patterns or historical precedent, briefly note why this time is different.
 - Do NOT restate the question. Start directly with the disruption.
 
 150-300 words.
@@ -604,7 +629,7 @@ RULES:
 - For every claim in the question, ask: what evidence supports this? If none is stated, flag it.
 - Provide specific numbers, benchmarks, or comparable situations where possible.
 - Name what would need to be true for the proposed approach to work — then assess how likely each condition is.
-- Do NOT address long-term vision (North) or disruption (East). Stay grounded in present reality.
+- Stay grounded in present reality. If strategic claims or disruption hypotheses lack evidence, flag that as part of your reality check.
 - Do NOT restate the question. Start directly with the binding constraint.
 
 150-300 words.
@@ -633,7 +658,7 @@ RULES:
 - Name 2-3 precedents or established patterns directly relevant to the question.
 - For each precedent, state what it predicts for the current situation and why.
 - If this situation is genuinely unprecedented, say so — and explain what makes historical analogies break down here.
-- Do NOT address future trends (East) or strategic vision (North). Stay rooted in what's already happened.
+- Stay rooted in what's already happened. If a precedent has direct implications for the current strategic direction, make the lesson explicit.
 - Do NOT restate the question. Start directly with the precedent.
 
 150-300 words.

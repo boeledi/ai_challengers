@@ -179,6 +179,10 @@ class WebInteractionHandler(InteractionHandler):
     Uses threading events to synchronize between the pipeline thread
     and the async web handler. The pipeline blocks on ask_user() until
     the web endpoint calls provide_answer().
+
+    The _questions_callback is set by PipelineRunner to push SSE events
+    to the browser when questions are detected. Without it, questions
+    are stored but never displayed.
     """
 
     def __init__(self, timeout: int = 300):
@@ -188,15 +192,29 @@ class WebInteractionHandler(InteractionHandler):
         self._questions: list[str] | None = None
         self._answer: str | None = None
         self._progress_callback = None
+        self._questions_callback = None
 
     def set_progress_callback(self, callback) -> None:
         """Set callback for progress notifications (used by SSE)."""
         self._progress_callback = callback
 
+    def set_questions_callback(self, callback) -> None:
+        """Set callback to notify the web layer when questions are detected.
+
+        The callback receives (questions: list[str], context: str) and should
+        push a 'needs_input' SSE event to the browser. Called from the pipeline
+        thread — the callback must be thread-safe.
+        """
+        self._questions_callback = callback
+
     def ask_user(self, questions: list[str], context: str = "") -> str | None:
-        """Store questions, signal the web layer, and wait for answer."""
+        """Store questions, notify the web layer via SSE, and wait for answer."""
         self._questions = questions
         self._questions_event.set()  # Signal that questions are ready
+
+        # Push needs_input SSE event to the browser
+        if self._questions_callback:
+            self._questions_callback(questions, context)
 
         # Wait for answer from web endpoint
         answered = self._answer_event.wait(timeout=self.timeout)

@@ -49,6 +49,15 @@ class PipelineRunner:
             handler = interaction.WebInteractionHandler(timeout=300)
             self._handlers[session_id] = handler
 
+            # Connect handler to SSE queue so questions reach the browser.
+            # ask_user() runs in the pipeline thread, so use call_soon_threadsafe
+            # to push the event onto the asyncio Queue from that thread.
+            loop = asyncio.get_running_loop()
+            def _on_questions(questions: list[str], context: str):
+                event = make_event("needs_input", questions=questions, context=context)
+                loop.call_soon_threadsafe(queue.put_nowait, event)
+            handler.set_questions_callback(_on_questions)
+
         async with self._semaphore:
             self.session_store.update_status(session_id, "running", "starting")
             await queue.put(make_event("progress", step="starting", detail="Pipeline starting..."))
