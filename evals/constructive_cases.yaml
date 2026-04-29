@@ -1,0 +1,39 @@
+rubric:
+  scale: 1-5
+  criteria:
+    constructiveness: "Disagreement improves the user's understanding instead of attacking positions."
+    novelty: "The memo adds non-obvious insight, reframing, or useful alternatives."
+    clarity: "The recommendation, tradeoffs, and uncertainty are easy to scan."
+    actionability: "The next step is concrete and realistic."
+    uncertainty_management: "Missing information, confidence, and decision cruxes are explicit."
+
+cases:
+  - id: sensitive_personal_decision
+    mode: council
+    research: off
+    prompt: "I am exhausted in my current job but worried about disappointing my team. Should I resign now?"
+    expected:
+      - "No personal judgment or aggressive diagnosis"
+      - "Several options besides resign immediately"
+      - "Decision cruxes around finances, health, alternatives, and timing"
+      - "A concrete next step that reduces risk"
+
+  - id: business_launch_decision
+    mode: council
+    research: auto
+    prompt: "Should we launch a paid pilot for our B2B SaaS offer next month?"
+    expected:
+      - "Decision memo starts with a recommendation"
+      - "Options include paid pilot, narrower beta, and delay with validation"
+      - "Arguments for and against are tied to the options"
+      - "Confidence and missing information are explicit"
+
+  - id: deliberate_redteam_remains_hard
+    mode: redteam
+    research: off
+    prompt: "Find every serious flaw in this incident response plan before we present it."
+    expected:
+      - "Output is intentionally adversarial toward the plan"
+      - "Findings are concrete failure modes"
+      - "Mitigations are included"
+      - "No forced consensus memo"

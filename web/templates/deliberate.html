@@ -12,21 +12,58 @@
 
 {% if session.status != 'complete' %}
 <div class="card" id="progress-card">
-    <h2>Progress</h2>
+    <div class="progress-heading">
+        <h2>Progress</h2>
+        <span class="chip chip-{{ session.status }}">{{ session.status }}</span>
+    </div>
     <div id="events" hx-ext="sse" sse-connect="/deliberate/{{ session_id }}/events">
-        <div sse-swap="progress" hx-swap="beforeend" hx-target="#event-list"></div>
-        <div sse-swap="needs_input" hx-swap="innerHTML" hx-target="#interaction-area"></div>
-        <div sse-swap="error" hx-swap="beforeend" hx-target="#event-list"></div>
-        <div sse-swap="complete" hx-swap="innerHTML" hx-target="#complete-area"></div>
+        <div sse-swap="progress" hx-swap="none"></div>
+        <div sse-swap="heartbeat" hx-swap="none"></div>
+        <div sse-swap="needs_input" hx-swap="none"></div>
+        <div sse-swap="error" hx-swap="none"></div>
+        <div sse-swap="canceled" hx-swap="none"></div>
+        <div sse-swap="complete" hx-swap="none"></div>
     </div>
 
-    <div id="event-list" class="event-list">
+    <div class="run-status-panel" id="run-status-panel" data-session-id="{{ session_id }}" data-state="{{ session.status }}">
+        <div class="run-status-main">
+            <span class="activity-spinner" aria-hidden="true"></span>
+            <div>
+                <div class="run-status-title" id="run-status-title">
+                    {% if session.status == 'canceled' %}Canceled{% elif session.status == 'error' %}Error{% elif session.status == 'complete' %}Complete{% else %}Backend working{% endif %}
+                </div>
+                <div class="run-status-detail" id="run-status-detail">
+                    {{ session.progress_step or 'Waiting for the next backend signal...' }}
+                </div>
+            </div>
+        </div>
+        <div class="run-status-meta">
+            <span>Elapsed <strong id="elapsed-time">00:00</strong></span>
+            <span>Last signal <strong id="last-signal">just now</strong></span>
+        </div>
+        {% if session.status in ['pending', 'running'] %}
+        <button type="button" class="btn btn-danger cancel-session-btn" id="cancel-session-btn" onclick="cancelSession('{{ session_id }}')">Cancel</button>
+        {% endif %}
+    </div>
+
+    <div id="event-list" class="event-list progress-shell">
+        {% if events %}
+            {% for e in events %}
+                {% set data = e.data or {} %}
+                <div class="event-item event-status-{{ data.status or e.event_type }}">
+                    <span class="event-time">{{ data.at or e.timestamp }}</span>
+                    <span class="event-badge">{{ (data.step or e.event_type) | replace('_', ' ') }}</span>
+                    <span class="event-detail"><span class="event-detail-text">{{ data.detail or data.message or e.event_type }}</span></span>
+                </div>
+            {% endfor %}
+        {% else %}
         {% if session.status == 'pending' %}
         <div class="event-item">Waiting to start...</div>
         {% elif session.status == 'running' %}
         <div class="event-item">Pipeline running...</div>
         {% elif session.status == 'error' %}
         <div class="event-item error">Error: {{ session.progress_step }}</div>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -36,17 +73,59 @@
 {% endif %}
 
 {% if session.status == 'complete' %}
+{% if session.result_json and session.result_json.verdict %}
+<div class="card">
+    <h2>Decision Memo</h2>
+    {% if session.result_json.metadata %}
+    <p class="meta">
+        Research: {{ session.result_json.metadata.research }} |
+        Output: {{ session.result_json.metadata.output }} |
+        Models: {{ session.result_json.metadata.models }}
+    </p>
+    {% endif %}
+    <div class="memo-output">{{ session.result_json.verdict }}</div>
+</div>
+{% endif %}
+
 <div class="card">
     <h2>Report</h2>
     {% if session.duration_ms %}
     <p class="meta">Completed in {{ (session.duration_ms / 1000) | round(1) }}s</p>
     {% endif %}
+    <div class="report-actions">
+        <a class="btn btn-primary" href="/sessions/{{ session_id }}/download/memo">Download Memo</a>
+        <a class="btn btn-secondary" href="/sessions/{{ session_id }}/download/md">Download Markdown</a>
+        <a class="btn btn-secondary" href="/sessions/{{ session_id }}/download/html">Download HTML</a>
+        {% if session.result_json and session.result_json.factcheck_path %}
+        <a class="btn btn-secondary" href="/sessions/{{ session_id }}/download/factcheck">Download Fact-Check</a>
+        {% endif %}
+        {% if session.result_json and session.result_json.log_path %}
+        <a class="btn btn-secondary" href="/sessions/{{ session_id }}/download/log">Download Log</a>
+        {% endif %}
+    </div>
     {% if session.result_html %}
     <iframe id="report-frame" class="report-iframe" srcdoc="{{ session.result_html | e }}" sandbox="allow-same-origin"></iframe>
     {% else %}
     <p class="meta">Report generated as file. Check the output/ directory.</p>
     {% endif %}
 </div>
+{% if events %}
+<div class="card">
+    <details>
+        <summary>Process Details ({{ events | length }} events)</summary>
+        <div class="event-list progress-shell">
+            {% for e in events %}
+                {% set data = e.data or {} %}
+                <div class="event-item event-status-{{ data.status or e.event_type }}">
+                    <span class="event-time">{{ data.at or e.timestamp }}</span>
+                    <span class="event-badge">{{ (data.step or e.event_type) | replace('_', ' ') }}</span>
+                    <span class="event-detail"><span class="event-detail-text">{{ data.detail or data.message or e.event_type }}</span></span>
+                </div>
+            {% endfor %}
+        </div>
+    </details>
+</div>
+{% endif %}
 {% endif %}
 
 <script>
@@ -55,20 +134,23 @@ document.addEventListener('htmx:sseMessage', function(event) {
     const data = JSON.parse(event.detail.data);
 
     if (event.detail.type === 'progress') {
-        const item = document.createElement('div');
-        item.className = 'event-item';
-        item.textContent = data.detail || data.step || 'Processing...';
-        eventList.appendChild(item);
-        eventList.scrollTop = eventList.scrollHeight;
+        updateRunStatus(data.status || 'running', data.detail || data.step || 'Processing...', data.at);
+        appendEventItem(eventList, data, 'progress');
+    } else if (event.detail.type === 'heartbeat') {
+        updateRunStatus('running', data.detail || 'Still working...', data.at);
     } else if (event.detail.type === 'needs_input') {
+        updateRunStatus('waiting', 'Waiting for your answer.', data.at);
         const area = document.getElementById('interaction-area');
         area.innerHTML = buildInteractionForm(data.questions, '{{ session_id }}');
+        htmx.process(area);
     } else if (event.detail.type === 'error') {
-        const item = document.createElement('div');
-        item.className = 'event-item error';
-        item.textContent = 'Error: ' + (data.message || 'Unknown error');
-        eventList.appendChild(item);
+        updateRunStatus('error', data.message || 'Unknown error', data.at);
+        appendEventItem(eventList, { step: 'error', detail: data.message || 'Unknown error', status: 'error' }, 'error');
+    } else if (event.detail.type === 'canceled') {
+        updateRunStatus('canceled', data.detail || data.message || 'Canceled by user.', data.at);
+        appendEventItem(eventList, { step: 'canceled', detail: data.detail || data.message || 'Canceled by user.', status: 'canceled' }, 'canceled');
     } else if (event.detail.type === 'complete') {
+        updateRunStatus('complete', 'Deliberation complete. Reloading report...');
         const area = document.getElementById('complete-area');
         area.innerHTML = '<div class="event-item success">Deliberation complete. Reloading report...</div>';
         // Reload to show the stored result_html
@@ -76,18 +158,143 @@ document.addEventListener('htmx:sseMessage', function(event) {
     }
 });
 
-function buildInteractionForm(questions, sessionId) {
-    let html = '<div class="interaction-box"><h3>Advisors Need More Information</h3><ul>';
-    if (questions) {
-        questions.forEach((q, i) => { html += '<li>' + q + '</li>'; });
+const progressStartedAt = Date.now();
+let lastSignalAt = Date.now();
+
+setInterval(() => {
+    updateElapsedTime();
+    updateLastSignal();
+}, 1000);
+
+function updateElapsedTime() {
+    const target = document.getElementById('elapsed-time');
+    if (!target) return;
+    const seconds = Math.max(0, Math.floor((Date.now() - progressStartedAt) / 1000));
+    const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+    const secs = String(seconds % 60).padStart(2, '0');
+    target.textContent = mins + ':' + secs;
+}
+
+function updateLastSignal() {
+    const target = document.getElementById('last-signal');
+    if (!target) return;
+    const seconds = Math.max(0, Math.floor((Date.now() - lastSignalAt) / 1000));
+    target.textContent = seconds < 2 ? 'just now' : seconds + 's ago';
+}
+
+function updateRunStatus(state, detail, at) {
+    lastSignalAt = Date.now();
+    const panel = document.getElementById('run-status-panel');
+    const title = document.getElementById('run-status-title');
+    const detailTarget = document.getElementById('run-status-detail');
+    if (panel) panel.dataset.state = state || 'running';
+    if (title) {
+        title.textContent = {
+            running: 'Backend working',
+            waiting: 'Waiting for input',
+            canceling: 'Canceling',
+            error: 'Error',
+            canceled: 'Canceled',
+            complete: 'Complete'
+        }[state] || 'Backend working';
     }
-    html += '</ul>';
-    html += '<form hx-post="/deliberate/' + sessionId + '/answer" hx-target="#interaction-area" hx-swap="innerHTML">';
-    html += '<textarea name="answer" rows="3" placeholder="Your answer..."></textarea>';
+    if (detailTarget) detailTarget.textContent = detail || 'Processing...';
+    const cancelButton = document.getElementById('cancel-session-btn');
+    if (cancelButton && ['canceling', 'canceled', 'complete', 'error'].includes(state)) {
+        cancelButton.disabled = true;
+    }
+    updateLastSignal();
+}
+
+async function cancelSession(sessionId) {
+    if (!confirm('Cancel this running session? The current LLM request may finish server-side, but its result will be ignored.')) {
+        return;
+    }
+    const button = document.getElementById('cancel-session-btn');
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Canceling...';
+    }
+    updateRunStatus('canceling', 'Cancel requested. Stopping at the next safe boundary...');
+    try {
+        const response = await fetch('/sessions/' + sessionId + '/cancel', { method: 'POST' });
+        if (!response.ok) {
+            updateRunStatus('error', 'Unable to cancel this session.');
+            if (button) {
+                button.disabled = false;
+                button.textContent = 'Cancel';
+            }
+        }
+    } catch (error) {
+        updateRunStatus('error', 'Unable to reach the server to cancel.');
+        if (button) {
+            button.disabled = false;
+            button.textContent = 'Cancel';
+        }
+    }
+}
+
+function appendEventItem(eventList, data, type) {
+    if (!eventList) return;
+    const item = document.createElement('div');
+    item.className = 'event-item event-status-' + (data.status || type || 'running');
+
+    const time = document.createElement('span');
+    time.className = 'event-time';
+    time.textContent = data.at || new Date().toLocaleTimeString();
+
+    const step = document.createElement('span');
+    step.className = 'event-badge';
+    step.textContent = (data.step || type || 'progress').replaceAll('_', ' ');
+
+    const detail = document.createElement('span');
+    detail.className = 'event-detail';
+    const detailText = document.createElement('span');
+    detailText.className = 'event-detail-text';
+    detailText.textContent = data.detail || data.message || 'Processing...';
+    detail.appendChild(detailText);
+
+    item.append(time, step, detail);
+    eventList.appendChild(item);
+    eventList.scrollTop = eventList.scrollHeight;
+}
+
+function buildInteractionForm(questions, sessionId) {
+    let html = '<div class="interaction-box clarification-panel">';
+    html += '<div class="interaction-header"><h3>Clarification needed</h3>';
+    html += '<span class="interaction-count">' + ((questions && questions.length) || 0) + ' question(s)</span></div>';
+    html += '<ol class="question-list">';
+    if (questions) {
+        questions.forEach((q, i) => { html += '<li><span>' + escapeHtml(q) + '</span></li>'; });
+    }
+    html += '</ol>';
+    html += '<form class="interaction-form" method="post" action="/deliberate/' + sessionId + '/answer" hx-post="/deliberate/' + sessionId + '/answer" hx-target="#interaction-area" hx-swap="innerHTML">';
+    html += '<textarea class="interaction-textarea" name="answer" rows="5" placeholder="Answer the questions or add the missing context..."></textarea>';
+    html += '<div class="interaction-actions">';
     html += '<button type="submit" class="btn btn-primary">Submit</button>';
-    html += '<button type="button" class="btn btn-secondary" onclick="this.closest(\'form\').querySelector(\'[name=answer]\').value=\'skip\';htmx.trigger(this.closest(\'form\'),\'submit\')">Skip</button>';
-    html += '</form></div>';
+    html += '<button type="button" class="btn btn-secondary" onclick="skipInteraction(this)">Skip</button>';
+    html += '</div></form></div>';
     return html;
+}
+
+function skipInteraction(button) {
+    const form = button.closest('form');
+    if (!form) return;
+    form.querySelector('[name=answer]').value = 'skip';
+    if (form.requestSubmit) {
+        form.requestSubmit();
+    } else {
+        form.submit();
+    }
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
 }
 </script>
 {% endblock %}

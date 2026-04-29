@@ -15,8 +15,8 @@
         <div class="form-group full-width">
             <label for="files">Context Files (optional)</label>
             <input type="file" id="files" name="files" multiple
-                   accept=".txt,.md,.csv,.json,.yaml,.yml,.py,.js,.ts,.html,.xml,.log,.pdf">
-            <span class="hint">Upload files to include as additional context for the advisors.</span>
+                   accept=".txt,.md,.csv,.json,.yaml,.yml,.py,.js,.ts,.html,.htm,.xml,.log">
+            <span class="hint">Upload text, code, HTML, or data files. PDFs are skipped until PDF parsing is enabled.</span>
         </div>
 
         <div class="form-group">
@@ -45,6 +45,27 @@
                 {% for l in lengths %}
                 <option value="{{ l }}">{{ l }}</option>
                 {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="research">Research</label>
+            <select id="research" name="research">
+                <option value="auto" selected>auto (default)</option>
+                <option value="context">context only</option>
+                <option value="factcheck">fact-check audit</option>
+                <option value="deep">deep audit</option>
+                <option value="on">on (legacy context)</option>
+                <option value="off">off</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="output">Primary Output</label>
+            <select id="output" name="output">
+                <option value="memo" selected>memo (default)</option>
+                <option value="full">full transcript</option>
+                <option value="both">memo and transcript</option>
             </select>
         </div>
 

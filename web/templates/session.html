@@ -17,8 +17,28 @@
 </div>
 
 {% if session.result_html %}
+{% if session.result_json and session.result_json.verdict %}
+<div class="card">
+    <h2>Decision Memo</h2>
+    <div class="memo-output">{{ session.result_json.verdict }}</div>
+</div>
+{% endif %}
+
 <div class="card">
     <h2>Report</h2>
+    <div class="report-actions">
+        <a class="btn btn-primary" href="/sessions/{{ session.id }}/download/memo">
+            {% if session.pipeline_type == 'analyze' %}Download Synthesis{% else %}Download Memo{% endif %}
+        </a>
+        <a class="btn btn-secondary" href="/sessions/{{ session.id }}/download/md">Download Markdown</a>
+        <a class="btn btn-secondary" href="/sessions/{{ session.id }}/download/html">Download HTML</a>
+        {% if session.result_json and session.result_json.factcheck_path %}
+        <a class="btn btn-secondary" href="/sessions/{{ session.id }}/download/factcheck">Download Fact-Check</a>
+        {% endif %}
+        {% if session.result_json and session.result_json.log_path %}
+        <a class="btn btn-secondary" href="/sessions/{{ session.id }}/download/log">Download Log</a>
+        {% endif %}
+    </div>
     <iframe id="report-frame" class="report-iframe" srcdoc="{{ session.result_html | e }}" sandbox="allow-same-origin"></iframe>
 </div>
 {% endif %}
@@ -27,14 +47,13 @@
 <div class="card">
     <details>
         <summary>Event Log ({{ events | length }} events)</summary>
-        <div class="event-list">
+        <div class="event-list progress-shell">
             {% for e in events %}
-            <div class="event-item">
-                <span class="meta">{{ e.timestamp }}</span>
-                <strong>{{ e.event_type }}</strong>
-                {% if e.data %}
-                <pre>{{ e.data }}</pre>
-                {% endif %}
+            {% set data = e.data or {} %}
+            <div class="event-item event-status-{{ data.status or e.event_type }}">
+                <span class="event-time">{{ data.at or e.timestamp }}</span>
+                <span class="event-badge">{{ (data.step or e.event_type) | replace('_', ' ') }}</span>
+                <span class="event-detail"><span class="event-detail-text">{{ data.detail or data.message or e.event_type }}</span></span>
             </div>
             {% endfor %}
         </div>

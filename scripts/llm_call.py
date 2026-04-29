@@ -72,6 +72,8 @@ RETRY_CONFIG = {
     408: {"max_retries": 1, "base_delay": 5,  "max_delay": 15,  "backoff": 1.0},
 }
 
+TRANSIENT_CONNECTION_RETRY = {"max_retries": 2, "base_delay": 2, "max_delay": 15, "backoff": 2.0}
+
 # HTTP status codes that are fatal (no retry)
 FATAL_STATUS_CODES = {400, 401, 403, 404}
 
@@ -271,13 +273,10 @@ def call_anthropic(
     if system_prompt:
         body["system"] = system_prompt
 
-    # Extended thinking support
-    # NOTE: Thinking API requires a version header that may not be available yet.
-    # When the API version becomes available, uncomment the block below.
-    # For now, use temperature variation for diversity (handled by caller).
-    if thinking_level:
-        temp_map = {"low": 0.3, "medium": 0.7, "high": 1.0}
-        body["temperature"] = temp_map.get(thinking_level, 0.7)
+    # Do not use temperature as an Anthropic thinking proxy. Recent Claude
+    # models reject it with "`temperature` is deprecated for this model."
+    # Thinking-level diversity for Anthropic should be implemented through the
+    # supported thinking API once enabled in this project.
 
     resp = requests.post(
         model_cfg["endpoint"],
@@ -650,8 +649,18 @@ def call_model(
 
         except requests.exceptions.ConnectionError as e:
             last_error = f"Connection error: {e}"
-            logger.warning("Connection error for %s: %s", model_key, last_error)
-            break
+            logger.warning("Connection error for %s: %s (attempt %d)", model_key, last_error, attempt + 1)
+            retry_cfg = TRANSIENT_CONNECTION_RETRY
+            if attempt >= retry_cfg["max_retries"]:
+                break
+            delay = min(
+                retry_cfg["base_delay"] * (retry_cfg["backoff"] ** attempt),
+                retry_cfg["max_delay"],
+            )
+            jitter = random.uniform(0, 1.0)
+            total_delay = delay + jitter
+            logger.info("Retrying %s after connection error in %.1fs...", model_key, total_delay)
+            time.sleep(total_delay)
 
         except ValueError as e:
             last_error = str(e)

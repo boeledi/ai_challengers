@@ -1,12 +1,14 @@
 """AI Provocateurs — FastAPI Web Application."""
 
 import asyncio
+import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import FastAPI, Request, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -17,7 +19,7 @@ import llm_call
 from web.models import DeliberateRequest, AnalyzeRequest, InteractionAnswer, ConfigKeyUpdate
 from web.session_store import SessionStore
 from web.pipeline_runner import PipelineRunner
-from web.sse import event_stream
+from web.sse import event_stream, make_event
 
 
 def create_app() -> FastAPI:
@@ -40,6 +42,22 @@ def create_app() -> FastAPI:
     # Services
     store = SessionStore(db_path=db_path)
     runner = PipelineRunner(session_store=store)
+
+    def record_interaction_answer(session_id: str, answer: str) -> None:
+        """Record answer delivery without storing the answer text itself."""
+        if answer.lower().strip() == "skip":
+            detail = "Skipped additional context."
+            progress = "Skipped additional context; pipeline resuming..."
+        else:
+            detail = f"Answer submitted ({len(answer)} chars)."
+            progress = "Answer submitted; pipeline resuming..."
+        store.update_status(session_id, "running", progress)
+        store.add_event(session_id, "progress", {
+            "step": "interaction",
+            "detail": detail,
+            "status": "ok",
+            "at": datetime.now().strftime("%H:%M:%S"),
+        })
 
     # =========================================================================
     # Pages
@@ -107,10 +125,21 @@ def create_app() -> FastAPI:
         session = store.get_session(session_id)
         if not session:
             return HTMLResponse("<h1>Session not found</h1>", status_code=404)
+
+        # Defensive fallback for stale pages that submitted the dynamic
+        # clarification form as a native GET before HTMX processed it.
+        answer = request.query_params.get("answer", "").strip()
+        if answer:
+            delivered = await runner.provide_answer(session_id, answer)
+            if delivered:
+                record_interaction_answer(session_id, answer)
+            return RedirectResponse(f"/deliberate/{session_id}", status_code=303)
+
         return templates.TemplateResponse("deliberate.html", {
             "request": request,
             "session": session,
             "session_id": session_id,
+            "events": store.get_events(session_id),
         })
 
     @app.get("/analyze/{session_id}", response_class=HTMLResponse)
@@ -123,7 +152,98 @@ def create_app() -> FastAPI:
             "request": request,
             "session": session,
             "session_id": session_id,
+            "events": store.get_events(session_id),
         })
+
+    @app.get("/sessions/{session_id}/download/{artifact}")
+    async def download_session_artifact(session_id: str, artifact: str):
+        """Download a generated memo/report artifact for a completed session."""
+        session = store.get_session(session_id)
+        if not session or session.get("status") != "complete":
+            return HTMLResponse("<h1>Session report not found</h1>", status_code=404)
+
+        result_json = session.get("result_json") or {}
+        artifact = artifact.lower()
+        filename_base = f"ai-challengers-{session_id}"
+
+        def final_memo() -> str:
+            return result_json.get("verdict") or result_json.get("synthesis") or ""
+
+        def safe_output_file(path_value: str | None) -> Path | None:
+            if not path_value:
+                return None
+            try:
+                path = Path(path_value).expanduser().resolve()
+                output_root = (llm_call.find_project_root() / "output").resolve()
+                path.relative_to(output_root)
+            except Exception:
+                return None
+            return path if path.is_file() else None
+
+        if artifact == "memo":
+            memo = final_memo()
+            if not memo:
+                return HTMLResponse("<h1>Memo not found</h1>", status_code=404)
+            return Response(
+                content=memo,
+                media_type="text/markdown; charset=utf-8",
+                headers={"Content-Disposition": f'attachment; filename="{filename_base}-memo.md"'},
+            )
+
+        if artifact == "html":
+            html_file = safe_output_file(result_json.get("html_path"))
+            if html_file:
+                return FileResponse(
+                    html_file,
+                    media_type="text/html",
+                    filename=html_file.name,
+                    content_disposition_type="attachment",
+                )
+            if session.get("result_html"):
+                return Response(
+                    content=session["result_html"],
+                    media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename_base}-report.html"'},
+                )
+
+        if artifact == "md":
+            md_file = safe_output_file(result_json.get("md_path"))
+            if md_file:
+                return FileResponse(
+                    md_file,
+                    media_type="text/markdown",
+                    filename=md_file.name,
+                    content_disposition_type="attachment",
+                )
+            memo = final_memo()
+            if memo:
+                return Response(
+                    content=memo,
+                    media_type="text/markdown; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{filename_base}-memo.md"'},
+                )
+
+        if artifact == "log":
+            log_file = safe_output_file(result_json.get("log_path"))
+            if log_file:
+                return FileResponse(
+                    log_file,
+                    media_type="text/plain",
+                    filename=log_file.name,
+                    content_disposition_type="attachment",
+                )
+
+        if artifact == "factcheck":
+            factcheck_file = safe_output_file(result_json.get("factcheck_path"))
+            if factcheck_file:
+                return FileResponse(
+                    factcheck_file,
+                    media_type="text/markdown",
+                    filename=factcheck_file.name,
+                    content_disposition_type="attachment",
+                )
+
+        return HTMLResponse("<h1>Session report not found</h1>", status_code=404)
 
     # =========================================================================
     # Actions
@@ -139,6 +259,8 @@ def create_app() -> FastAPI:
         length = form.get("length") or None
         rounds = int(form.get("rounds", 1))
         no_interact = form.get("no_interact") == "on"
+        research = form.get("research", "auto")
+        output = form.get("output", "memo")
 
         if not question:
             return RedirectResponse("/", status_code=303)
@@ -150,22 +272,10 @@ def create_app() -> FastAPI:
             if hasattr(upload, "filename") and upload.filename:
                 try:
                     raw = await upload.read()
-                    text = raw.decode("utf-8", errors="replace")
-                    if text.strip():
-                        file_contents.append((upload.filename, text))
+                    if raw:
+                        file_contents.append((upload.filename, raw))
                 except Exception:
                     pass  # Skip unreadable files
-
-        # Append file contents to the question as context
-        enriched_question = question
-        if file_contents:
-            context_parts = ["\n\n--- ATTACHED FILES ---\n"]
-            for filename, content in file_contents:
-                # Truncate very large files to prevent token explosion
-                if len(content) > 50000:
-                    content = content[:50000] + f"\n\n[... truncated, {len(content)} chars total ...]"
-                context_parts.append(f"\n### File: {filename}\n\n{content}\n")
-            enriched_question = question + "".join(context_parts)
 
         file_names = [f for f, _ in file_contents] if file_contents else []
 
@@ -176,17 +286,21 @@ def create_app() -> FastAPI:
             depth=depth or "basic",
             length=length or "standard",
         )
+        runner.prepare_queue(session_id)
 
         background_tasks.add_task(
             runner.run_deliberate,
             session_id=session_id,
-            question=enriched_question,  # Pass enriched question with file contents
+            question=question,
             mode=mode,
             depth=depth,
             length=length,
             rounds=rounds,
             no_interact=no_interact,
             file_names=file_names,
+            file_items=file_contents,
+            research=research,
+            output=output,
         )
 
         return RedirectResponse(f"/deliberate/{session_id}", status_code=303)
@@ -211,6 +325,7 @@ def create_app() -> FastAPI:
             mode="analyze",
             length=length or "standard",
         )
+        runner.prepare_queue(session_id)
 
         background_tasks.add_task(
             runner.run_analyze,
@@ -233,12 +348,24 @@ def create_app() -> FastAPI:
         if answer:
             delivered = await runner.provide_answer(session_id, answer)
             if delivered:
+                record_interaction_answer(session_id, answer)
                 return HTMLResponse(
                     '<div class="event-item success">Answer submitted. Pipeline resuming...</div>'
                 )
         return HTMLResponse(
             '<div class="event-item">No active interaction for this session.</div>'
         )
+
+    @app.post("/sessions/{session_id}/cancel")
+    async def cancel_session(session_id: str):
+        """Cancel a pending or running session."""
+        canceled = await runner.cancel_session(session_id)
+        if canceled:
+            return JSONResponse({"status": "canceled"})
+        session = store.get_session(session_id)
+        if session and session.get("status") == "canceled":
+            return JSONResponse({"status": "canceled"})
+        return JSONResponse({"status": "not_cancelable"}, status_code=409)
 
     # =========================================================================
     # SSE Endpoints
@@ -255,8 +382,25 @@ def create_app() -> FastAPI:
                 async def completed():
                     yield f"event: complete\ndata: {{\"status\": \"done\"}}\n\n"
                 return StreamingResponse(completed(), media_type="text/event-stream")
+            if session and session["status"] == "error":
+                message = json.dumps({"message": session.get("progress_step") or "Pipeline failed"})
+                return StreamingResponse(
+                    iter([f"event: error\ndata: {message}\n\n"]),
+                    media_type="text/event-stream",
+                )
+            if session and session["status"] == "canceled":
+                message = json.dumps({"message": session.get("progress_step") or "Canceled by user"})
+                return StreamingResponse(
+                    iter([f"event: canceled\ndata: {message}\n\n"]),
+                    media_type="text/event-stream",
+                )
+            if session and session["status"] in {"pending", "running"}:
+                queue = runner.prepare_queue(session_id)
+                await queue.put(make_event("progress", step="waiting",
+                                           detail="Waiting for pipeline worker..."))
+                return StreamingResponse(event_stream(queue), media_type="text/event-stream")
             return StreamingResponse(
-                iter([f"event: error\ndata: {{\"message\": \"Session not found\"}}\n\n"]),
+                iter([f"event: error\ndata: {{\"message\": \"Session stream not available\"}}\n\n"]),
                 media_type="text/event-stream",
             )
         return StreamingResponse(event_stream(queue), media_type="text/event-stream")

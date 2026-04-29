@@ -12,6 +12,8 @@ class DeliberateRequest(BaseModel):
     rounds: int = Field(default=1, ge=1, le=10)
     no_interact: bool = Field(default=False)
     chairman: str | None = Field(default=None)
+    research: str = Field(default="auto")
+    output: str = Field(default="memo")
     files: list[str] = Field(default_factory=list)
 
 

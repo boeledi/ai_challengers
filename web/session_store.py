@@ -75,10 +75,16 @@ class SessionStore:
     def update_status(self, session_id: str, status: str, progress_step: str = None) -> None:
         conn = self._get_conn()
         try:
-            conn.execute(
-                "UPDATE sessions SET status = ?, progress_step = ? WHERE id = ?",
-                (status, progress_step, session_id),
-            )
+            if status == "canceled":
+                conn.execute(
+                    "UPDATE sessions SET status = ?, progress_step = ? WHERE id = ?",
+                    (status, progress_step, session_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE sessions SET status = ?, progress_step = ? WHERE id = ? AND status != 'canceled'",
+                    (status, progress_step, session_id),
+                )
             conn.commit()
         finally:
             conn.close()
@@ -102,8 +108,19 @@ class SessionStore:
                 """UPDATE sessions
                    SET status = 'complete', result_html = ?, result_json = ?,
                        total_cost = ?, duration_ms = ?
-                   WHERE id = ?""",
+                   WHERE id = ? AND status != 'canceled'""",
                 (result_html, json.dumps(result_json), total_cost, duration_ms, session_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def store_canceled(self, session_id: str, reason: str = "Canceled by user") -> None:
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "UPDATE sessions SET status = 'canceled', progress_step = ? WHERE id = ?",
+                (reason, session_id),
             )
             conn.commit()
         finally:

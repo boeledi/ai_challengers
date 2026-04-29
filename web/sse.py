@@ -9,7 +9,8 @@ async def event_stream(queue: asyncio.Queue) -> AsyncGenerator[str, None]:
     """Async generator that yields SSE-formatted events from a queue.
 
     Events are dicts with 'type' and 'data' keys.
-    A None sentinel signals stream completion.
+    A None sentinel closes the stream. Pipelines emit explicit terminal events
+    such as "complete", "canceled", or "error" before the sentinel.
     """
     while True:
         try:
@@ -20,8 +21,6 @@ async def event_stream(queue: asyncio.Queue) -> AsyncGenerator[str, None]:
             continue
 
         if event is None:
-            # Send completion event and end stream
-            yield f"event: complete\ndata: {json.dumps({'status': 'done'})}\n\n"
             break
 
         event_type = event.get("type", "progress")
